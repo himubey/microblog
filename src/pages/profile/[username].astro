@@ -107,40 +107,50 @@ if (profileFirst.error?.message?.includes("pinned_post_id")) {
 
 const effectiveMyProfile = myProfileRefetch || myProfile;
 
-const profile =
-  (effectiveMyProfile &&
-    (effectiveMyProfile.username === username || user?.email?.split("@")[0] === username)
-      ? effectiveMyProfile
-      : null) || profileRow;
+const isSelf =
+  Boolean(
+    effectiveMyProfile &&
+      (effectiveMyProfile.username === username || user?.email?.split("@")[0] === username)
+  );
+
+const profile = (isSelf ? effectiveMyProfile : null) || profileRow;
 
 const profileId =
   profile?.id || effectiveMyProfile?.id || user?.id || "00000000-0000-0000-0000-000000000000";
 const displayName =
   profile?.display_name ||
   profile?.username ||
-  effectiveMyProfile?.display_name ||
-  user?.user_metadata?.name ||
+  (isSelf ? effectiveMyProfile?.display_name : null) ||
+  (isSelf ? user?.user_metadata?.name : null) ||
   "User";
 const handle =
   profile?.username ||
-  effectiveMyProfile?.username ||
-  user?.user_metadata?.username ||
-  user?.email?.split("@")[0] ||
+  (isSelf ? effectiveMyProfile?.username : null) ||
+  (isSelf ? user?.user_metadata?.username : null) ||
+  (isSelf ? user?.email?.split("@")[0] : null) ||
   username;
 const isOwner = Boolean(user?.id && profileId === user.id);
 
+const { data: followRow } = user
+  ? await supabase
+      .from("follows")
+      .select("follower_id")
+      .eq("follower_id", user.id)
+      .eq("followee_id", profileId)
+      .maybeSingle()
+  : { data: null };
+const isFollowing = Boolean(followRow);
+const canViewProfile = Boolean(profile) && (!profile?.is_private || isOwner || isFollowing);
+
 const bio =
-  profile?.bio ||
-  effectiveMyProfile?.bio ||
-  (isOwner ? meta.bio || "" : "");
+  (canViewProfile ? profile?.bio : "") ||
+  (isOwner ? effectiveMyProfile?.bio || meta.bio || "" : "");
 const location =
-  profile?.location ||
-  effectiveMyProfile?.location ||
-  (isOwner ? meta.location || "" : "");
+  (canViewProfile ? profile?.location : "") ||
+  (isOwner ? effectiveMyProfile?.location || meta.location || "" : "");
 const website =
-  profile?.website ||
-  effectiveMyProfile?.website ||
-  (isOwner ? meta.website || "" : "");
+  (canViewProfile ? profile?.website : "") ||
+  (isOwner ? effectiveMyProfile?.website || meta.website || "" : "");
 
 const { data: postsData } = await supabase
   .from("posts")
@@ -249,8 +259,9 @@ const quotes = (quotesData || [])
 const combined = [...posts, ...quotes].sort(
   (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 );
-const pinnedPosts = combined.filter((p) => p.type === "post" && p.isPinned);
-const regularPosts = combined.filter((p) => !(p.type === "post" && p.isPinned));
+const visiblePosts = canViewProfile ? combined : [];
+const pinnedPosts = visiblePosts.filter((p) => p.type === "post" && p.isPinned);
+const regularPosts = visiblePosts.filter((p) => !(p.type === "post" && p.isPinned));
 const orderedPosts = [...pinnedPosts, ...regularPosts];
 
 const { count: followersCount } = await supabase
@@ -286,12 +297,18 @@ const followerList = (followersPreview || []).map((row) => row.profiles).filter(
           <div>
             <h1 class="text-lg font-bold">{displayName}</h1>
             <div class="text-sm text-muted">@{handle}</div>
-            <div class="mt-2 text-sm" set:html={bio ? linkify(bio) : "No bio yet."}></div>
-            <div class="mt-2 text-xs text-muted">
-              {location ? `Location: ${location}` : ""}
-              {location && website ? " · " : ""}
-              {website ? `Website: ${website}` : ""}
-            </div>
+            {canViewProfile ? (
+              <>
+                <div class="mt-2 text-sm" set:html={bio ? linkify(bio) : "No bio yet."}></div>
+                <div class="mt-2 text-xs text-muted">
+                  {location ? `Location: ${location}` : ""}
+                  {location && website ? " · " : ""}
+                  {website ? `Website: ${website}` : ""}
+                </div>
+              </>
+            ) : (
+              <div class="mt-2 text-sm text-muted">This profile is private.</div>
+            )}
           </div>
         </div>
         <div class="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
@@ -434,10 +451,15 @@ const followerList = (followersPreview || []).map((row) => row.profiles).filter(
       <h3 class="text-sm font-bold">Profile</h3>
       <div class="mt-2 text-xs text-muted">Name: {displayName}</div>
       <div class="text-xs text-muted">Username: @{handle}</div>
-      <div class="text-xs text-muted">Location: {location || "—"}</div>
-      <div class="text-xs text-muted">Website: {website || "—"}</div>
-      <div class="mt-3 text-xs text-muted">Bio: <span set:html={bio ? linkify(bio) : "—"}></span></div>
-      {!isOwner && <button class="btn mt-4" type="button">Follow</button>}
+      <div class="text-xs text-muted">Location: {canViewProfile ? (location || "—") : "—"}</div>
+      <div class="text-xs text-muted">Website: {canViewProfile ? (website || "—") : "—"}</div>
+      <div class="mt-3 text-xs text-muted">Bio: <span set:html={canViewProfile ? (bio ? linkify(bio) : "—") : "—"}></span></div>
+      {!isOwner && (
+        <form method="post" action={isFollowing ? "/api/follows/unfollow" : "/api/follows/follow"} class="mt-4">
+          <input type="hidden" name="followee_id" value={profileId} />
+          <button class="btn" type="submit">{isFollowing ? "Unfollow" : "Follow"}</button>
+        </form>
+      )}
 
       <h3 class="mt-4 text-sm font-bold">Followers</h3>
       <p class="mt-1 text-xs text-muted">
