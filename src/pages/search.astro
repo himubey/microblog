@@ -1,0 +1,116 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSupabaseServerClient } from "../lib/supabase/server";
+import IconReply from "virtual:icons/ic/baseline-chat-bubble-outline";
+import IconRepost from "virtual:icons/ic/baseline-repeat";
+import IconLike from "virtual:icons/ic/baseline-favorite-border";
+import IconLikeFilled from "virtual:icons/ic/baseline-favorite";
+
+const q = (Astro.url.searchParams.get("q") || "").trim();
+const supabase = getSupabaseServerClient(Astro);
+
+const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const linkify = (value) => {
+  const escaped = escapeHtml(value);
+  const withLinks = escaped.replace(/(https?:\/\/[^\s]+)/g, '<a class="text-link" href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  return withLinks.replace(/(^|\s)#([\w_]+)/g, (_m, lead, tag) => `${lead}<a class="text-link" href="/tag/${tag.toLowerCase()}">#${tag}</a>`);
+};
+
+let people = [];
+let posts = [];
+let tags = [];
+
+if (q) {
+  const tagMatch = q.startsWith("#") ? q.slice(1) : q;
+  if (tagMatch) {
+    tags = [tagMatch.toLowerCase()];
+  }
+
+  const { data: peopleRows } = await supabase
+    .from("profiles")
+    .select("id, username, display_name, bio")
+    .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
+    .limit(10);
+  people = peopleRows || [];
+
+  let authorIds = people.map((p) => p.id);
+  if (authorIds.length === 0) {
+    authorIds = ["00000000-0000-0000-0000-000000000000"];
+  }
+  const { data: postRows } = await supabase
+    .from("posts")
+    .select("id, author_id, content, created_at, profiles:profiles!posts_author_id_fkey (id, username, display_name)")
+    .is("reply_to_id", null)
+    .or(`content.ilike.%${q}%,author_id.in.(${authorIds.join(",")})`)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  posts = (postRows || []).map((p) => ({
+    id: p.id,
+    user: p.profiles?.username || "user",
+    name: p.profiles?.display_name || p.profiles?.username || "User",
+    text: p.content,
+    time: new Date(p.created_at).toLocaleDateString(),
+  }));
+}
+---
+<Base title="Microblog - Search">
+  <section class="card p-4">
+    <h1 class="text-lg font-bold">Search</h1>
+    <div class="mt-1 text-xs text-muted">Results for “{q || "…"}”</div>
+  </section>
+
+  <div class="grid gap-4 md:grid-cols-[2fr_1fr] mt-3">
+    <section class="card">
+      <div class="border-b border-[#edf3f7] px-3 py-2 text-xs text-muted">Posts</div>
+      {!q && <div class="p-4 text-sm text-muted">Type a query above.</div>}
+      {q && posts.length === 0 && <div class="p-4 text-sm text-muted">No posts found.</div>}
+      {posts.map((post) => (
+        <div class="post-card">
+          <img src="/assets/default-avatar.webp" alt="" class="post-avatar" />
+          <div class="post-body">
+            <div class="post-header">
+              <div class="post-meta">
+                <a href={`/profile/${post.user}`} class="font-bold text-link">{post.name}</a>
+                <span class="post-handle"> @{post.user}</span>
+                <span class="post-time">· <a class="text-link" href={`/post/${post.id}`}>{post.time}</a></span>
+              </div>
+            </div>
+            <div class="post-content" set:html={linkify(post.text)}></div>
+            <div class="post-actions">
+              <a class="action-link action-icon" href={`/post/${post.id}`}><IconReply class="action-icon-svg" />0</a>
+              <span class="repost-wrap">
+                <button class="action-link action-icon" type="button"><IconRepost class="action-icon-svg" />0</button>
+              </span>
+              <button class="action-link action-icon" type="button"><IconLike class="action-icon-svg" />0</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
+
+    <aside class="card p-4">
+      <h3 class="text-sm font-bold">People</h3>
+      {q && people.length === 0 && <div class="mt-2 text-xs text-muted">No people found.</div>}
+      {people.map((p) => (
+        <div class="mt-2">
+          <a class="text-link font-bold" href={`/profile/${p.username}`}>{p.display_name || p.username}</a>
+          <div class="text-xs text-muted">@{p.username}</div>
+          {p.bio && <div class="text-xs text-muted">{p.bio}</div>}
+        </div>
+      ))}
+
+      <h3 class="mt-4 text-sm font-bold">Hashtags</h3>
+      {tags.length === 0 && <div class="mt-2 text-xs text-muted">No tags.</div>}
+      {tags.map((t) => (
+        <div class="mt-1"><a class="text-link" href={`/tag/${t}`}>#{t}</a></div>
+      ))}
+    </aside>
+  </div>
+</Base>
