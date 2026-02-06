@@ -44,6 +44,7 @@ create table if not exists public.posts (
 create index if not exists posts_author_id_idx on public.posts(author_id);
 create index if not exists posts_created_at_idx on public.posts(created_at desc);
 create index if not exists posts_reply_to_id_idx on public.posts(reply_to_id);
+create index if not exists profiles_username_idx on public.profiles(username);
 
 create trigger posts_set_updated_at
 before update on public.posts
@@ -66,6 +67,8 @@ create table if not exists public.reposts (
 
 create index if not exists reposts_post_id_idx on public.reposts(post_id);
 create index if not exists reposts_user_id_idx on public.reposts(user_id);
+create index if not exists follows_follower_id_idx on public.follows(follower_id);
+create index if not exists follows_followee_id_idx on public.follows(followee_id);
 
 -- Likes
 create table if not exists public.likes (
