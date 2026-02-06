@@ -169,6 +169,7 @@ const posts = (postsData || [])
       time: formatShortDate(p.created_at),
       isOwner: user?.id === p.author_id,
       isPinned: pinnedPostId === p.id,
+      isFollowing: followingIds.has(p.author_id),
       counts: {
         replies: replyCounts.get(p.id) || 0,
         reposts: repostCounts.get(p.id) || 0,
@@ -284,7 +285,12 @@ const feedItems = [...posts, ...quotes].sort(
                         </div>
                       </div>
                       <div class="mt-2 flex items-center gap-2">
-                        <button class="hovercard-btn" type="button">Follow</button>
+                        {!post.isOwner && (
+                          <form method="post" action={post.isFollowing ? "/api/follows/unfollow" : "/api/follows/follow"}>
+                            <input type="hidden" name="followee_id" value={post.authorId} />
+                            <button class="hovercard-btn" type="submit">{post.isFollowing ? "Unfollow" : "Follow"}</button>
+                          </form>
+                        )}
                         <div class="text-xs text-muted">{post.counts.replies + post.counts.reposts + post.counts.likes} interactions</div>
                       </div>
                     </span>
@@ -321,10 +327,17 @@ const feedItems = [...posts, ...quotes].sort(
                       </>
                       ) : (
                       <>
-                        <form method="post" action="/api/follows/unfollow">
-                          <input type="hidden" name="followee_id" value={post.authorId} />
-                          <button class="post-menu-item" type="submit">Unfollow @{post.user}</button>
-                        </form>
+                        {post.isFollowing ? (
+                          <form method="post" action="/api/follows/unfollow">
+                            <input type="hidden" name="followee_id" value={post.authorId} />
+                            <button class="post-menu-item" type="submit">Unfollow @{post.user}</button>
+                          </form>
+                        ) : (
+                          <form method="post" action="/api/follows/follow">
+                            <input type="hidden" name="followee_id" value={post.authorId} />
+                            <button class="post-menu-item" type="submit">Follow @{post.user}</button>
+                          </form>
+                        )}
                         <form method="post" action="/api/mutes/toggle">
                           <input type="hidden" name="muted_id" value={post.authorId} />
                           <button class="post-menu-item" type="submit">Mute @{post.user}</button>
