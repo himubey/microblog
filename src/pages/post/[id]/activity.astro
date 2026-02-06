@@ -1,0 +1,51 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { getSupabaseServerClient } from "../../../lib/supabase/server";
+
+const { id } = Astro.params;
+const supabase = getSupabaseServerClient(Astro);
+
+const { data: postRow } = await supabase
+  .from("posts")
+  .select("id, author_id, content, created_at")
+  .eq("id", id)
+  .single();
+
+const { data: author } = await supabase
+  .from("profiles")
+  .select("username, display_name")
+  .eq("id", postRow?.author_id || "00000000-0000-0000-0000-000000000000")
+  .single();
+
+const { count: repliesCount } = await supabase
+  .from("posts")
+  .select("*", { count: "exact", head: true })
+  .eq("reply_to_id", id);
+
+const { count: likesCount } = await supabase
+  .from("likes")
+  .select("*", { count: "exact", head: true })
+  .eq("post_id", id);
+
+const { count: repostsCount } = await supabase
+  .from("reposts")
+  .select("*", { count: "exact", head: true })
+  .eq("post_id", id);
+---
+<Base title={`Microblog - Activity ${id}`}>
+  <section class="card p-4">
+    <h1 class="text-lg font-bold">Post activity</h1>
+    {postRow ? (
+      <>
+        <div class="mt-2 text-sm">
+          <span class="font-bold">{author?.display_name || author?.username || "User"}</span>
+          <span class="text-muted"> @{author?.username || "user"}</span>
+        </div>
+        <div class="mt-2">{postRow.content}</div>
+        <div class="mt-2 text-xs text-muted">Replies: {repliesCount || 0} · Reposts: {repostsCount || 0} · Likes: {likesCount || 0}</div>
+      </>
+    ) : (
+      <div class="text-sm text-muted">Post not found.</div>
+    )}
+  </section>
+</Base>

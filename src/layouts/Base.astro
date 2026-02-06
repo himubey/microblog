@@ -1,0 +1,32 @@
+---
+import "../styles/tailwind.css";
+import SiteHeader from "../components/layout/SiteHeader.astro";
+import SiteFooter from "../components/layout/SiteFooter.astro";
+import { getSupabaseServerClient } from "../lib/supabase/server";
+
+const { title = "Microblog" } = Astro.props;
+const supabase = getSupabaseServerClient(Astro);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content="Microblog - short, timely updates in a classic web style." />
+  </head>
+  <body class="min-h-screen font-ui text-text bg-[radial-gradient(circle_at_20%_0%,#c6f0f6_0%,#a8e6ef_35%,#86cddd_70%,#7cc2d0_100%)]">
+    <div class="min-h-screen">
+      <div class="mx-auto w-shell max-w-[92%] py-6">
+        <SiteHeader user={user} />
+        <main class="mt-3">
+          <slot />
+        </main>
+        <SiteFooter />
+      </div>
+    </div>
+  </body>
+</html>

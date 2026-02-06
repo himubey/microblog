@@ -1,0 +1,38 @@
+---
+import Base from "../layouts/Base.astro";
+const error = Astro.url.searchParams.get("error");
+const errorText =
+  error && error !== "missing" ? decodeURIComponent(error) : null;
+---
+<Base title="Microblog - Sign in">
+  <section class="grid gap-4 md:grid-cols-[2fr_1fr]">
+    <div class="card p-5">
+      <h1 class="mb-2 text-xl font-bold">Welcome back</h1>
+      <p class="text-muted">Sign in to see your timeline and post updates.</p>
+
+      {error === "missing" && <p class="mt-3 text-xs text-red-600">Email and password are required.</p>}
+      {errorText && <p class="mt-3 text-xs text-red-600">{errorText}</p>}
+
+      <form method="post" action="/api/auth/login" class="mt-4" novalidate>
+        <label class="block text-xs text-muted" for="login-email">Email</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="login-email" name="email" type="email" placeholder="you@example.com" required />
+
+        <label class="mt-3 block text-xs text-muted" for="login-password">Password</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="login-password" name="password" type="password" placeholder="******" required />
+
+        <div class="mt-4 flex items-center justify-between">
+          <label class="text-xs text-muted"><input type="checkbox" class="mr-1" /> Remember me</label>
+          <a class="text-xs text-link" href="/forgot">Forgot password?</a>
+        </div>
+        <button class="btn mt-4" type="submit">Sign in</button>
+      </form>
+    </div>
+
+    <aside class="card p-4">
+      <strong>New to Microblog?</strong>
+      <p class="mt-2 text-xs text-muted">Create an account and start sharing short updates.</p>
+      <a class="mt-3 inline-block rounded border border-accent-dark bg-accent px-4 py-2 font-bold text-white" href="/signup">Join now</a>
+      <div class="mt-4 text-xs text-muted">By signing in you agree to our Terms and Privacy.</div>
+    </aside>
+  </section>
+</Base>

@@ -1,0 +1,482 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSupabaseServerClient } from "../lib/supabase/server";
+import IconReply from "virtual:icons/ic/baseline-chat-bubble-outline";
+import IconRepost from "virtual:icons/ic/baseline-repeat";
+import IconLike from "virtual:icons/ic/baseline-favorite-border";
+import IconLikeFilled from "virtual:icons/ic/baseline-favorite";
+import IconQuote from "virtual:icons/ic/baseline-format-quote";
+
+const supabase = getSupabaseServerClient(Astro);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+const isLoggedIn = Boolean(user);
+
+const error = Astro.url.searchParams.get("error");
+const errorText =
+  error && error !== "empty" && error !== "toolong"
+    ? decodeURIComponent(error)
+    : null;
+
+const formatShortDate = (ts) =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(ts));
+
+const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const linkify = (value) => {
+  const escaped = escapeHtml(value);
+  const withLinks = escaped.replace(/(https?:\/\/[^\s]+)/g, '<a class="text-link" href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  return withLinks.replace(/(^|\s)#([\w_]+)/g, (_m, lead, tag) => `${lead}<a class="text-link" href="/tag/${tag.toLowerCase()}">#${tag}</a>`);
+};
+
+const { data: postsData } = await supabase
+  .from("posts")
+  .select("id, author_id, content, created_at, reply_to_id, profiles:profiles!posts_author_id_fkey (id, username, display_name, bio)")
+  .is("reply_to_id", null)
+  .order("created_at", { ascending: false })
+  .limit(20);
+
+const { data: quotesData } = await supabase
+  .from("reposts")
+  .select("id, user_id, post_id, quote_text, created_at, profiles:profiles!reposts_user_id_fkey (id, username, display_name), post:posts!reposts_post_id_fkey (id, content, created_at, author_id, profiles:profiles!posts_author_id_fkey (id, username, display_name))")
+  .eq("type", "quote")
+  .order("created_at", { ascending: false })
+  .limit(20);
+
+const postIds = Array.from(
+  new Set([
+    ...(postsData || []).map((p) => p.id),
+    ...(quotesData || []).map((q) => q.post_id).filter(Boolean),
+  ])
+);
+
+const { data: myProfile } = user
+  ? await supabase
+      .from("profiles")
+      .select("id, username, display_name, bio, location, website")
+      .eq("id", user.id)
+      .single()
+  : { data: null };
+const meta = user?.user_metadata || {};
+const myDisplayName = myProfile?.display_name || meta.display_name || meta.name || "You";
+const myUsername = myProfile?.username || meta.username || user?.email?.split("@")[0] || "guest";
+const myBio = myProfile?.bio || meta.bio || "";
+const myLocation = myProfile?.location || meta.location || "";
+const myWebsite = myProfile?.website || meta.website || "";
+
+const { data: repliesData } = await supabase
+  .from("posts")
+  .select("id, reply_to_id")
+  .in("reply_to_id", postIds.length ? postIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const { data: likesData } = await supabase
+    .from("likes")
+    .select("post_id, user_id")
+    .in("post_id", postIds.length ? postIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const { data: repostsData } = await supabase
+    .from("reposts")
+    .select("post_id, user_id")
+    .in("post_id", postIds.length ? postIds : ["00000000-0000-0000-0000-000000000000"]);
+
+let mutedIds = new Set();
+let blockedIds = new Set();
+let pinnedPostId = null;
+let pinFeatureEnabled = true;
+let followingIds = new Set();
+
+if (user) {
+  const { data: muteRows } = await supabase
+    .from("mutes")
+    .select("muted_id")
+    .eq("muter_id", user.id);
+  mutedIds = new Set((muteRows || []).map((m) => m.muted_id));
+
+  const { data: blockRows } = await supabase
+    .from("blocks")
+    .select("blocked_id")
+    .eq("blocker_id", user.id);
+  blockedIds = new Set((blockRows || []).map((b) => b.blocked_id));
+
+  const pinnedRes = await supabase
+    .from("profiles")
+    .select("pinned_post_id")
+    .eq("id", user.id)
+    .single();
+  if (pinnedRes.error?.message?.includes("pinned_post_id")) {
+    pinFeatureEnabled = false;
+    pinnedPostId = null;
+  } else {
+    pinnedPostId = pinnedRes.data?.pinned_post_id || null;
+  }
+
+  const { data: followRows } = await supabase
+    .from("follows")
+    .select("followee_id")
+    .eq("follower_id", user.id);
+  followingIds = new Set((followRows || []).map((f) => f.followee_id));
+}
+
+const countBy = (rows, key) => {
+  const map = new Map();
+  (rows || []).forEach((r) => {
+    const k = r[key];
+    map.set(k, (map.get(k) || 0) + 1);
+  });
+  return map;
+};
+
+const replyCounts = countBy(repliesData, "reply_to_id");
+const likeCounts = countBy(likesData, "post_id");
+const repostCounts = countBy(repostsData, "post_id");
+
+const likedSet = new Set(
+  (likesData || [])
+    .filter((r) => r.user_id === user?.id)
+    .map((r) => r.post_id)
+);
+const repostedSet = new Set(
+  (repostsData || [])
+    .filter((r) => r.user_id === user?.id)
+    .map((r) => r.post_id)
+);
+
+const posts = (postsData || [])
+  .filter((p) => !mutedIds.has(p.author_id) && !blockedIds.has(p.author_id))
+  .map((p) => {
+    const author =
+      p.profiles || (myProfile?.id === p.author_id ? myProfile : null);
+    return {
+      type: "post",
+      id: p.id,
+      authorId: p.author_id,
+      user: author?.username || (myProfile?.id === p.author_id ? myUsername : "user"),
+      name: author?.display_name || author?.username || (myProfile?.id === p.author_id ? myDisplayName : "User"),
+      bio: author?.bio || "",
+      text: p.content,
+      createdAt: p.created_at,
+      time: formatShortDate(p.created_at),
+      isOwner: user?.id === p.author_id,
+      isPinned: pinnedPostId === p.id,
+      counts: {
+        replies: replyCounts.get(p.id) || 0,
+        reposts: repostCounts.get(p.id) || 0,
+        likes: likeCounts.get(p.id) || 0,
+      },
+      liked: likedSet.has(p.id),
+      reposted: repostedSet.has(p.id),
+    };
+  });
+
+const hashtagCounts = new Map();
+const hashtagRegex = /(^|\\s)#([\\w_]+)/g;
+for (const p of postsData || []) {
+  const text = p.content || "";
+  let match;
+  while ((match = hashtagRegex.exec(text)) !== null) {
+    const tag = match[2].toLowerCase();
+    hashtagCounts.set(tag, (hashtagCounts.get(tag) || 0) + 1);
+  }
+}
+const trendingTags = Array.from(hashtagCounts.entries())
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 4)
+  .map(([tag]) => tag);
+
+let whoToFollow = [];
+{
+  let query = supabase
+    .from("profiles")
+    .select("id, username, display_name")
+    .order("created_at", { ascending: false })
+    .limit(3);
+  if (user) {
+    const exclude = [user.id, ...Array.from(followingIds), ...Array.from(mutedIds), ...Array.from(blockedIds)];
+    if (exclude.length > 0) {
+      query = query.not("id", "in", `(${exclude.map((id) => `"${id}"`).join(",")})`);
+    }
+  }
+  const { data } = await query;
+  whoToFollow = data || [];
+}
+
+const quotes = (quotesData || [])
+  .filter((q) => q.quote_text && q.post)
+  .filter((q) => !mutedIds.has(q.user_id) && !blockedIds.has(q.user_id))
+  .map((q) => ({
+    type: "quote",
+    id: q.id,
+    authorId: q.user_id,
+    user: q.profiles?.username || "user",
+    name: q.profiles?.display_name || q.profiles?.username || "User",
+    text: q.quote_text,
+    createdAt: q.created_at,
+    time: formatShortDate(q.created_at),
+    quoted: {
+      id: q.post.id,
+      user: q.post.profiles?.username || "user",
+      name: q.post.profiles?.display_name || q.post.profiles?.username || "User",
+      text: q.post.content,
+      time: formatShortDate(q.post.created_at),
+    },
+    counts: {
+      replies: replyCounts.get(q.post.id) || 0,
+      reposts: repostCounts.get(q.post.id) || 0,
+      likes: likeCounts.get(q.post.id) || 0,
+    },
+    liked: likedSet.has(q.post.id),
+    reposted: repostedSet.has(q.post.id),
+  }));
+
+const feedItems = [...posts, ...quotes].sort(
+  (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+);
+---
+<Base title="Microblog - Home">
+  <div class="grid gap-4 md:grid-cols-[2fr_1fr]">
+    <div>
+      <section class="card p-4">
+        <strong>What is happening?</strong>
+        {error === "empty" && <div class="mt-2 text-xs text-red-600">Post cannot be empty.</div>}
+        {error === "toolong" && <div class="mt-2 text-xs text-red-600">Post must be 140 characters or fewer.</div>}
+        {errorText && <div class="mt-2 text-xs text-red-600">{errorText}</div>}
+        <form method="post" action="/api/posts/create" class="mt-2" novalidate>
+          <textarea class="h-20 w-full resize-none rounded border border-border p-2 text-sm" name="content" placeholder="Share your update in 140 characters..." disabled={!isLoggedIn}></textarea>
+          <div class="mt-2 flex items-center justify-between text-xs text-muted">
+            <span>140</span>
+            <button class="btn" type="submit" disabled={!isLoggedIn}>Update</button>
+          </div>
+          {!isLoggedIn && <div class="mt-2 text-xs text-muted">Sign in to post updates.</div>}
+        </form>
+      </section>
+
+      <section class="card mt-3">
+        {feedItems.length === 0 && (
+          <div class="p-4 text-sm text-muted">No posts yet.</div>
+        )}
+        {feedItems.map((post) => (
+          <div class="post-card">
+            <img src="/assets/default-avatar.webp" alt="" class="post-avatar" />
+            <div class="post-body">
+              <div class="post-header">
+                <div class="post-meta">
+                  <span class="hovercard-wrap">
+                    <a href={`/profile/${post.user}`} class="font-bold text-link">{post.name}</a>
+                    <span class="post-handle"> @{post.user}</span>
+                    <span class="post-time">· <a class="text-link" href={`/post/${post.type === "post" ? post.id : post.quoted.id}`}>{post.time}</a></span>
+                    <span class="hovercard">
+                      <div class="flex gap-2">
+                        <img src="/assets/default-avatar.webp" alt="" class="hovercard-avatar object-cover" />
+                        <div>
+                          <div class="font-bold text-sm">{post.user}</div>
+                          <div class="text-xs text-muted" set:html={linkify(post.bio)}></div>
+                        </div>
+                      </div>
+                      <div class="mt-2 flex items-center gap-2">
+                        <button class="hovercard-btn" type="button">Follow</button>
+                        <div class="text-xs text-muted">{post.counts.replies + post.counts.reposts + post.counts.likes} interactions</div>
+                      </div>
+                    </span>
+                  </span>
+                </div>
+                {post.type === "post" && (
+                  <span class="post-menu-wrap">
+                    {post.reposted && (
+                      <span class="post-reposted" title="Reposted" aria-label="Reposted">
+                        <IconRepost class="action-icon-svg" />
+                      </span>
+                    )}
+                    {post.isPinned && (
+                      <span class="post-pin-inline" title="Pinned post" aria-label="Pinned post">
+                        <svg viewBox="0 0 20 20" aria-hidden="true">
+                          <path d="M6 2h8l-1 5 3 3v2H4v-2l3-3-1-5zm3 11v5h2v-5H9z"></path>
+                        </svg>
+                      </span>
+                    )}
+                    <button class="post-menu-button" type="button">...</button>
+                    <span class="post-menu">
+                      {post.isOwner ? (
+                      <>
+                        <form method="post" action="/api/posts/delete">
+                          <input type="hidden" name="post_id" value={post.id} />
+                          <button class="post-menu-item danger" type="submit">Delete post</button>
+                        </form>
+                        {pinFeatureEnabled && (
+                          <form method="post" action="/api/posts/pin">
+                            <input type="hidden" name="post_id" value={post.id} />
+                            <button class="post-menu-item" type="submit">{post.isPinned ? "Unpin from profile" : "Pin to your profile"}</button>
+                          </form>
+                        )}
+                      </>
+                      ) : (
+                      <>
+                        <form method="post" action="/api/follows/unfollow">
+                          <input type="hidden" name="followee_id" value={post.authorId} />
+                          <button class="post-menu-item" type="submit">Unfollow @{post.user}</button>
+                        </form>
+                        <form method="post" action="/api/mutes/toggle">
+                          <input type="hidden" name="muted_id" value={post.authorId} />
+                          <button class="post-menu-item" type="submit">Mute @{post.user}</button>
+                        </form>
+                        <form method="post" action="/api/blocks/toggle">
+                          <input type="hidden" name="blocked_id" value={post.authorId} />
+                          <button class="post-menu-item" type="submit">Block @{post.user}</button>
+                        </form>
+                      </>
+                      )}
+                      <a class="post-menu-item" href={`/post/${post.id}/activity`}>View post activity</a>
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div class="post-link" data-href={`/post/${post.type === "post" ? post.id : post.quoted.id}`}>
+                <div class="post-content" set:html={linkify(post.text)}></div>
+              </div>
+              {post.type === "quote" && (
+                <div class="post-link" data-href={`/post/${post.quoted.id}`}>
+                  <div class="quote-card">
+                    <div class="quote-meta">{post.quoted.name} @{post.quoted.user} · {post.quoted.time}</div>
+                    <div class="quote-text" set:html={linkify(post.quoted.text)}></div>
+                  </div>
+                </div>
+              )}
+              <div class="post-actions">
+                <a class="action-link action-icon" href={`/post/${post.type === "post" ? post.id : post.quoted.id}`}>
+                  <IconReply class="action-icon-svg" />
+                  {post.counts.replies}
+                </a>
+                <span class="repost-wrap">
+                  <form method="post" action="/api/reposts/repost" class="inline">
+                    <input type="hidden" name="post_id" value={post.type === "post" ? post.id : post.quoted.id} />
+                    <button class="action-link action-icon" type="submit">
+                      <IconRepost class="action-icon-svg" />
+                      {post.counts.reposts}
+                    </button>
+                  </form>
+                  <span class="repost-menu">
+                    <form method="post" action="/api/reposts/repost">
+                      <input type="hidden" name="post_id" value={post.id} />
+                      <button class="post-menu-item" type="submit">Repost</button>
+                    </form>
+                    <button
+                      class="post-menu-item js-quote-trigger"
+                      type="button"
+                      data-post-id={post.id}
+                      data-post-text={post.text}
+                      data-post-name={post.name}
+                      data-post-user={post.user}
+                      data-post-time={post.time}
+                    >
+                      <IconQuote class="action-icon-svg" /> Quote
+                    </button>
+                  </span>
+                </span>
+                <span>·</span>
+                <form method="post" action="/api/likes/toggle" class="inline">
+                  <input type="hidden" name="post_id" value={post.type === "post" ? post.id : post.quoted.id} />
+                  <button class={`action-link action-icon ${post.liked ? "is-liked" : ""}`} type="submit">
+                    {post.liked ? <IconLikeFilled class="action-icon-svg" /> : <IconLike class="action-icon-svg" />}
+                    {post.counts.likes}
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+    </div>
+
+    <aside class="card p-4">
+      <div class="grid grid-cols-[56px_1fr] gap-3">
+        <img src="/assets/default-avatar.webp" alt="" class="h-14 w-14 rounded border border-border object-cover" />
+        <div>
+          <div class="font-bold">{myDisplayName}</div>
+          <div class="text-xs text-muted">@{myUsername}</div>
+          <a class="text-xs text-link" href={user ? `/profile/${myUsername}` : "/login"}>View profile</a>
+        </div>
+      </div>
+
+      <h3 class="mt-4 text-sm font-bold">Bio</h3>
+      <p class="mt-1 text-xs text-muted" set:html={myBio ? linkify(myBio) : "Add a bio in Settings."}></p>
+      {(myLocation || myWebsite) && (
+        <p class="mt-2 text-xs text-muted">
+          {myLocation ? `Location: ${myLocation}` : ""}
+          {myLocation && myWebsite ? " · " : ""}
+          {myWebsite ? `Website: ${myWebsite}` : ""}
+        </p>
+      )}
+      <h3 class="mt-3 text-sm font-bold">Trending</h3>
+      <div class="mt-1 flex flex-wrap gap-1">
+        {trendingTags.length === 0 && <span class="text-xs text-muted">No tags yet.</span>}
+        {trendingTags.map((tag) => (
+          <a class="tag" href={`/tag/${tag}`}>#{tag}</a>
+        ))}
+      </div>
+      <h3 class="mt-3 text-sm font-bold">Who to follow</h3>
+      <div class="mt-1 text-xs text-muted">
+        {whoToFollow.length === 0 && <span>No suggestions yet.</span>}
+        {whoToFollow.map((p, idx) => (
+          <span>
+            <a class="text-link" href={`/profile/${p.username}`}>@{p.username}</a>
+            {idx < whoToFollow.length - 1 ? ", " : ""}
+          </span>
+        ))}
+      </div>
+    </aside>
+  </div>
+
+  <dialog class="quote-dialog" id="quote-dialog">
+    <div class="dialog-header">
+      <div class="dialog-title">Quote post</div>
+      <button class="post-menu-button" type="button" data-quote-close>✕</button>
+    </div>
+    <div class="dialog-body">
+      <form method="post" action="/api/reposts/quote">
+        <input type="hidden" name="post_id" id="quote-post-id" />
+        <textarea class="h-20 w-full resize-none rounded border border-border p-2 text-sm" name="quote_text" placeholder="Add a comment (optional)"></textarea>
+        <div class="quote-preview">
+          <div class="text-xs text-muted" id="quote-meta"></div>
+          <div class="mt-1" id="quote-text"></div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn" type="submit">Quote</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script>
+    const dialog = document.getElementById("quote-dialog");
+    const postIdInput = document.getElementById("quote-post-id");
+    const quoteMeta = document.getElementById("quote-meta");
+    const quoteText = document.getElementById("quote-text");
+    document.querySelectorAll(".js-quote-trigger").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        postIdInput.value = btn.dataset.postId || "";
+        quoteMeta.textContent = `${btn.dataset.postName || ""} @${btn.dataset.postUser || ""} · ${btn.dataset.postTime || ""}`;
+        quoteText.textContent = btn.dataset.postText || "";
+        dialog.showModal();
+      });
+    });
+    document.querySelector("[data-quote-close]")?.addEventListener("click", () => dialog.close());
+
+    document.querySelectorAll(".post-link[data-href]").forEach((el) => {
+      el.addEventListener("click", (event) => {
+        if (event.target.closest("a")) return;
+        const href = el.getAttribute("data-href");
+        if (href) window.location.href = href;
+      });
+    });
+  </script>
+</Base>

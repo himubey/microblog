@@ -1,0 +1,43 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { getSupabaseServerClient } from "../../../lib/supabase/server";
+
+const { username } = Astro.params;
+const supabase = getSupabaseServerClient(Astro);
+
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("id, username, display_name")
+  .eq("username", username)
+  .maybeSingle();
+
+const profileId = profile?.id || "00000000-0000-0000-0000-000000000000";
+
+const { data: following } = await supabase
+  .from("follows")
+  .select("followee_id, profiles:profiles!follows_followee_id_fkey (id, username, display_name, bio)")
+  .eq("follower_id", profileId)
+  .limit(50);
+
+const list = (following || []).map((row) => row.profiles).filter(Boolean);
+---
+<Base title={`Microblog - @${username} following`}>
+  <section class="card p-4">
+    <h1 class="text-lg font-bold">@{username} · Following</h1>
+    <div class="mt-1 text-xs text-muted">People @{username} follows</div>
+  </section>
+
+  <section class="card mt-3">
+    {list.length === 0 && <div class="p-4 text-sm text-muted">Not following anyone yet.</div>}
+    {list.map((person) => (
+      <div class="grid grid-cols-[48px_1fr] gap-3 border-b border-[#edf3f7] p-3 last:border-b-0">
+        <img src="/assets/default-avatar.webp" alt="" class="h-12 w-12 rounded border border-border object-cover" />
+        <div>
+          <a class="font-bold text-link" href={`/profile/${person.username}`}>{person.display_name || person.username}</a>
+          <div class="text-xs text-muted">@{person.username}</div>
+          {person.bio && <div class="mt-1 text-xs text-muted">{person.bio}</div>}
+        </div>
+      </div>
+    ))}
+  </section>
+</Base>

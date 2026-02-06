@@ -1,0 +1,119 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSupabaseServerClient } from "../lib/supabase/server";
+
+const supabase = getSupabaseServerClient(Astro);
+const { data: userData } = await supabase.auth.getUser();
+const user = userData.user;
+if (!user) {
+  return Astro.redirect("/login");
+}
+
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("username, display_name, bio, location, website, avatar_url")
+  .eq("id", user.id)
+  .maybeSingle();
+
+const displayName = profile?.display_name ?? user.user_metadata?.display_name ?? "";
+const username = profile?.username ?? user.user_metadata?.username ?? "";
+const bio = profile?.bio ?? "";
+const location = profile?.location ?? "";
+const website = profile?.website ?? "";
+const avatarUrl = profile?.avatar_url ?? "/assets/default-avatar.webp";
+
+const error = Astro.url.searchParams.get("error");
+const success = Astro.url.searchParams.get("success");
+---
+<Base title="Microblog - Settings">
+  <section class="card p-4">
+    <div class="flex items-center gap-3">
+      <img src={avatarUrl} alt="" class="h-12 w-12 rounded border border-border object-cover" />
+      <div>
+        <div class="text-sm text-muted">{displayName ? `${displayName}'s settings` : "Your settings"}</div>
+        <div class="text-xs text-muted">Account · Password · Mobile · Notices · <strong class="text-text">Profile</strong> · Design · Connections</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card mt-3 p-4">
+    <div class="grid gap-6 md:grid-cols-[2fr_1fr]">
+      <div>
+        {error && (
+          <div class="mb-3 rounded border border-[#e4b1b1] bg-[#fff6f6] px-3 py-2 text-xs text-[#b42318]">
+            {error === "missing" ? "Name and username are required." : error === "username_taken" ? "Username already exists." : error}
+          </div>
+        )}
+        {success && (
+          <div class="mb-3 rounded border border-[#b8d6b8] bg-[#f2fbf2] px-3 py-2 text-xs text-[#0f5132]">
+            Profile updated.
+          </div>
+        )}
+        <form method="post" action="/api/profile/update" enctype="application/x-www-form-urlencoded" class="grid gap-4 md:grid-cols-[120px_1fr]">
+          <div class="text-sm font-bold">Picture</div>
+          <div>
+            <img src={avatarUrl} alt="" class="h-20 w-20 rounded border border-border object-cover" />
+            <div class="mt-2 text-xs text-muted">Avatar upload coming soon.</div>
+          </div>
+
+          <div class="text-sm font-bold">Name</div>
+          <div>
+            <input
+              class="w-full rounded border border-border p-2 text-sm"
+              name="display_name"
+              value={displayName}
+              placeholder="Your name"
+              required
+            />
+            <div class="mt-1 text-xs text-muted">Enter your real name, so people can recognize you.</div>
+          </div>
+
+          <div class="text-sm font-bold">Username</div>
+          <div>
+            <input
+              class="w-full rounded border border-border p-2 text-sm"
+              name="username"
+              value={username}
+              placeholder="username"
+              required
+            />
+            <div class="mt-1 text-xs text-muted">This becomes your public @handle.</div>
+          </div>
+
+          <div class="text-sm font-bold">Location</div>
+          <div>
+            <input class="w-full rounded border border-border p-2 text-sm" name="location" value={location} placeholder="India" />
+            <div class="mt-1 text-xs text-muted">Where in the world are you?</div>
+          </div>
+
+          <div class="text-sm font-bold">Web</div>
+          <div>
+            <input class="w-full rounded border border-border p-2 text-sm" name="website" value={website} placeholder="https://example.com" />
+            <div class="mt-1 text-xs text-muted">Have a homepage or blog? Put the address here.</div>
+          </div>
+
+          <div class="text-sm font-bold">Bio</div>
+          <div>
+            <textarea class="h-20 w-full resize-none rounded border border-border p-2 text-sm" name="bio" maxlength="160" placeholder="About you…">
+              {bio}
+            </textarea>
+            <div class="mt-1 text-xs text-muted">About yourself in fewer than 160 characters.</div>
+          </div>
+
+          <div></div>
+          <div>
+            <button class="btn mt-2" type="submit">Save</button>
+          </div>
+        </form>
+      </div>
+
+      <aside>
+        <h3 class="text-sm font-bold">Profile</h3>
+        <p class="mt-1 text-xs text-muted">This information appears on your public profile, search results, and beyond.</p>
+
+        <h3 class="mt-4 text-sm font-bold">Tips</h3>
+        <p class="mt-1 text-xs text-muted">Filling in your profile information will help people find you on Microblog. Be sure to use a real name. Link to your site if you have one.</p>
+      </aside>
+    </div>
+  </section>
+</Base>

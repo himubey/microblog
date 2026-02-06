@@ -1,0 +1,48 @@
+---
+import Base from "../layouts/Base.astro";
+const error = Astro.url.searchParams.get("error");
+const errorText =
+  error && error !== "missing" && error !== "nomatch"
+    ? decodeURIComponent(error)
+    : null;
+---
+<Base title="Microblog - Join">
+  <section class="grid gap-4 md:grid-cols-[2fr_1fr]">
+    <div class="card p-5">
+      <h1 class="mb-2 text-xl font-bold">Join Microblog</h1>
+      <p class="text-muted">Create your account and start sharing updates in a classic web style.</p>
+
+      {error === "missing" && <p class="mt-3 text-xs text-red-600">Name, username, email, and password are required.</p>}
+      {error === "nomatch" && <p class="mt-3 text-xs text-red-600">Passwords do not match.</p>}
+      {error === "username_taken" && <p class="mt-3 text-xs text-red-600">Username is already taken.</p>}
+      {errorText && <p class="mt-3 text-xs text-red-600">{errorText}</p>}
+
+      <form method="post" action="/api/auth/signup" class="mt-4" novalidate>
+        <label class="block text-xs text-muted" for="signup-name">Full name</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="signup-name" name="name" type="text" placeholder="Your name" required />
+
+        <label class="mt-3 block text-xs text-muted" for="signup-username">Username</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="signup-username" name="username" type="text" placeholder="microfan" required />
+
+        <label class="mt-3 block text-xs text-muted" for="signup-email">Email</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="signup-email" name="email" type="email" placeholder="you@example.com" required />
+
+        <label class="mt-3 block text-xs text-muted" for="signup-password">Password</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="signup-password" name="password" type="password" placeholder="******" required />
+
+        <label class="mt-3 block text-xs text-muted" for="signup-confirm">Confirm password</label>
+        <input class="mt-1 w-full rounded border border-border p-2 text-sm" id="signup-confirm" name="confirm" type="password" placeholder="******" required />
+
+        <button class="btn mt-4" type="submit">Create account</button>
+        <div class="mt-3 text-xs text-muted">By joining you agree to our Terms and Privacy.</div>
+      </form>
+    </div>
+
+    <aside class="card p-4">
+      <strong>Already have an account?</strong>
+      <p class="mt-2 text-xs text-muted">Sign in to see your timeline and post updates.</p>
+      <a class="mt-3 inline-block rounded border border-border bg-[#e5eef5] px-4 py-2 text-sm font-bold" href="/login">Sign in</a>
+      <div class="mt-4 text-xs text-muted">Tip: choose a short username for a classic look.</div>
+    </aside>
+  </section>
+</Base>

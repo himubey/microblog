@@ -1,0 +1,28 @@
+---
+const { user } = Astro.props;
+const username = user?.user_metadata?.username || user?.email?.split("@")[0];
+---
+<div class="card flex flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+  <div class="flex items-center gap-3">
+    <div class="rounded-md bg-white px-3 py-1 text-2xl font-bold tracking-wide text-[#4bb8e6] shadow-card">micro<span class="text-[#89d7f0]">blog</span></div>
+    <div class="hidden text-xs text-muted sm:block">classic updates, modern speed</div>
+  </div>
+  <nav class="flex flex-wrap gap-x-3 rounded bg-white px-2 py-1 text-[13px] shadow-card">
+    {user ? (
+      <>
+        <a href="/home" class="text-link">Timeline</a>
+        <a href="/settings" class="text-link">Settings</a>
+        <span class="text-muted">@{username}</span>
+        <form method="post" action="/api/auth/logout" class="inline">
+          <button class="text-link" type="submit">Sign out</button>
+        </form>
+      </>
+    ) : (
+      <>
+        <a href="/" class="text-link">Home</a>
+        <a href="/login" class="text-link">Sign in</a>
+        <a href="/signup" class="text-link">Join</a>
+      </>
+    )}
+  </nav>
+</div>
