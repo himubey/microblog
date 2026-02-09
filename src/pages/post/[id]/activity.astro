@@ -7,45 +7,24 @@ const supabase = getSupabaseServerClient(Astro);
 
 const { data: postRow } = await supabase
   .from("posts")
-  .select("id, author_id, content, created_at")
+  .select("id, author_id")
   .eq("id", id)
-  .single();
+  .maybeSingle();
 
-const { data: author } = await supabase
-  .from("profiles")
-  .select("username, display_name")
-  .eq("id", postRow?.author_id || "00000000-0000-0000-0000-000000000000")
-  .single();
+let username = null;
+if (postRow?.author_id) {
+  const { data: author } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", postRow.author_id)
+    .maybeSingle();
+  username = author?.username || null;
+}
 
-const { count: repliesCount } = await supabase
-  .from("posts")
-  .select("*", { count: "exact", head: true })
-  .eq("reply_to_id", id);
-
-const { count: likesCount } = await supabase
-  .from("likes")
-  .select("*", { count: "exact", head: true })
-  .eq("post_id", id);
-
-const { count: repostsCount } = await supabase
-  .from("reposts")
-  .select("*", { count: "exact", head: true })
-  .eq("post_id", id);
+if (username) {
+  return Astro.redirect(`/${username}/post/${id}/activity`, 301);
+}
 ---
-<Base title={`Microblog - Activity ${id}`}>
-  <section class="card p-4">
-    <h1 class="text-lg font-bold">Post activity</h1>
-    {postRow ? (
-      <>
-        <div class="mt-2 text-sm">
-          <span class="font-bold">{author?.display_name || author?.username || "User"}</span>
-          <span class="text-muted"> @{author?.username || "user"}</span>
-        </div>
-        <div class="mt-2">{postRow.content}</div>
-        <div class="mt-2 text-xs text-muted">Replies: {repliesCount || 0} · Reposts: {repostsCount || 0} · Likes: {likesCount || 0}</div>
-      </>
-    ) : (
-      <div class="text-sm text-muted">Post not found.</div>
-    )}
-  </section>
+<Base title="Microblog - Activity">
+  <section class="card p-4 text-sm text-muted">Post not found.</section>
 </Base>

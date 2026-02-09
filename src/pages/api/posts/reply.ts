@@ -32,5 +32,20 @@ export const POST: APIRoute = async (context) => {
     return context.redirect(`/post/${postId}?error=${msg}`);
   }
 
-  return context.redirect(`/post/${postId}`);
+  const { data: postRow } = await supabase
+    .from("posts")
+    .select("author_id")
+    .eq("id", postId)
+    .maybeSingle();
+
+  const { data: author } = postRow?.author_id
+    ? await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", postRow.author_id)
+        .maybeSingle()
+    : { data: null };
+
+  const username = author?.username || user?.email?.split("@")[0] || "user";
+  return context.redirect(`/${username}/post/${postId}`);
 };

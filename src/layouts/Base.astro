@@ -18,8 +18,17 @@ const {
     <title>{title}</title>
     <meta name="description" content="Microblog - short, timely updates in a classic web style." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#7cc2d0" />
   </head>
   <body class="min-h-screen font-ui text-text bg-[radial-gradient(circle_at_20%_0%,#c6f0f6_0%,#a8e6ef_35%,#86cddd_70%,#7cc2d0_100%)]">
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js");
+        });
+      }
+    </script>
     <div class="min-h-screen">
       <div class="mx-auto w-shell max-w-[92%] py-6">
         <SiteHeader user={user} />

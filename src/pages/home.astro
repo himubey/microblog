@@ -276,7 +276,7 @@ const feedItems = [...posts, ...quotes].sort(
                   <span class="hovercard-wrap">
                     <a href={`/profile/${post.user}`} class="font-bold text-link">{post.name}</a>
                     <span class="post-handle"> @{post.user}</span>
-                    <span class="post-time">· <a class="text-link" href={`/post/${post.type === "post" ? post.id : post.quoted.id}`}>{post.time}</a></span>
+                    <span class="post-time">· <a class="text-link" href={`/${post.type === "post" ? post.user : post.quoted.user}/post/${post.type === "post" ? post.id : post.quoted.id}`}>{post.time}</a></span>
                     <span class="hovercard">
                       <div class="flex gap-2">
                         <img src="/assets/default-avatar.webp" alt="" class="hovercard-avatar object-cover" />
@@ -349,16 +349,16 @@ const feedItems = [...posts, ...quotes].sort(
                         </form>
                       </>
                       )}
-                      <a class="post-menu-item" href={`/post/${post.id}/activity`}>View post activity</a>
+                      <a class="post-menu-item" href={`/${post.user}/post/${post.id}/activity`}>View post activity</a>
                     </span>
                   </span>
                 )}
               </div>
-              <div class="post-link" data-href={`/post/${post.type === "post" ? post.id : post.quoted.id}`}>
+              <div class="post-link" data-href={`/${post.type === "post" ? post.user : post.quoted.user}/post/${post.type === "post" ? post.id : post.quoted.id}`}>
                 <div class="post-content" set:html={linkify(post.text)}></div>
               </div>
               {post.type === "quote" && (
-                <div class="post-link" data-href={`/post/${post.quoted.id}`}>
+                <div class="post-link" data-href={`/${post.quoted.user}/post/${post.quoted.id}`}>
                   <div class="quote-card">
                     <div class="quote-meta">{post.quoted.name} @{post.quoted.user} · {post.quoted.time}</div>
                     <div class="quote-text" set:html={linkify(post.quoted.text)}></div>
@@ -366,7 +366,7 @@ const feedItems = [...posts, ...quotes].sort(
                 </div>
               )}
               <div class="post-actions">
-                <a class="action-link action-icon" href={`/post/${post.type === "post" ? post.id : post.quoted.id}`}>
+                <a class="action-link action-icon" href={`/${post.type === "post" ? post.user : post.quoted.user}/post/${post.type === "post" ? post.id : post.quoted.id}`}>
                   <IconReply class="action-icon-svg" />
                   {post.counts.replies}
                 </a>
